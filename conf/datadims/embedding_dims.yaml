@@ -11,8 +11,21 @@ resnetlm : 256
 dnabert6: 768
 awdlstm: 64
 dnabert2 : 768
+dnabert2-metagenomic-lora : 768
+dnabert2-curriculum-lora : 768
+dnabert2-curriculum-lora-reversed : 768
+dnabert2-samples-per-rank : 768
+dnabert2-curriculum-512 : 768
+dnabert2-curriculum-512-phylum : 768
+dnabert2-curriculum-512-class : 768
+dnabert2-curriculum-512-order : 768
+dnabert2-curriculum-512-family : 768
+dnabert2-curriculum-512-genus : 768
+dnabert2-no-overlap-curriculum : 768
 gena-lm-bigbird-base-t2t : 768
 gena-lm-bert-large-t2 : 1024
+hyenadna-curriculum-clm : 16
+hyenadna-no-overlap : 16
 hyenadna-large-1m : 256
 hyenadna-tiny-1k : 128
 hyenadna-small-32k : 256

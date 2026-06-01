@@ -4,11 +4,69 @@
 [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 [![Documentation Status](https://readthedocs.org/projects/bend/badge/?version=latest)](https://bend.readthedocs.io/en/latest/?badge=latest)
 
+**Companion repo**: [claudiofcguerra/metagenomic-language-models](https://github.com/claudiofcguerra/metagenomic-language-models) — the data-prep side. This fork is the model-training side, used to evaluate the curriculum-pretrained models.
+
 The BEND paper (ICLR 2024) is available here: 
 
 "[BEND: BENCHMARKING DNA LANGUAGE MODELS ON BIOLOGICALLY MEANINGFUL TASKS](https://arxiv.org/abs/2311.12570)"
 
 Frederikke Isa Marin, Felix Teufel, Marc Horlacher, Dennis Madsen, Dennis Pultz, Ole Winther, Wouter Boomsma
+
+## Thesis additions
+
+This fork adds curriculum-pretrained DNA language models and the scripts to reproduce them on an OAR-scheduled GPU cluster. The thesis tested whether pretraining DNABERT-2 and HyenaDNA on a curriculum of taxonomic ranks, from phylum down to genus, produces better embeddings on BEND's downstream tasks than flat pretraining.
+
+### Embedders
+
+Registered in `conf/embedding/embed.yaml` and implemented in `bend/utils/embedders.py`:
+
+| Name | Base model | Training |
+|-|-|-|
+| `dnabert2-curriculum-512` | DNABERT-2 | Five-stage curriculum, LoRA, max_length=512, final merged model |
+| `dnabert2-curriculum-512-{phylum,class,order,family,genus}` | DNABERT-2 | Per-stage intermediate checkpoints, for ablation |
+| `dnabert2-no-overlap-curriculum` | DNABERT-2 | Curriculum variant with no species overlap between ranks |
+| `hyenadna-curriculum-clm` | HyenaDNA | Causal-LM curriculum, no LoRA, max_length=1000 |
+| `hyenadna-no-overlap` | HyenaDNA | No-overlap variant |
+
+### Training scripts
+
+`scripts/fine_tune_curriculum_mlm.py` is the LoRA curriculum trainer for DNABERT-2. It runs the five taxonomic stages and saves both per-stage checkpoints and a final merged model.
+
+`scripts/fine_tune_curriculum_mlm_minimal.py` is the non-LoRA trainer. It accepts `--model hyenadna` (causal LM) or `--model dnabert2` (MLM).
+
+`scripts/merge_lora_with_base.py` merges LoRA adapters into base weights.
+
+`scripts/finetuning_model.py` holds the per-architecture optimizer and scheduler classes plus the dataset wrappers used by the trainers.
+
+Both curriculum trainers read the datasets produced by [`metagenomic-language-models`](https://github.com/claudiofcguerra/metagenomic-language-models).
+
+### Cluster scripts
+
+Every step runs in Docker on an OAR cluster, with the repo bind-mounted at `/app`.
+
+`scripts/run_fine_tune_curriculum_rank.sh` launches DNABERT-2 curriculum pretraining. It uses the parent directory as the Docker build context so the sibling `metagenomic-language-models/curriculum_datasets/` is reachable from inside the image.
+
+`scripts/run_fine_tune_docker.sh` launches the non-LoRA curriculum trainer (used for HyenaDNA and NT-v2).
+
+`scripts/run_embeddings_metagenomic_lora.sh` precomputes embeddings for every (model, task) pair. `scripts/run_train_metagenomic_lora.sh` trains the supervised heads on top.
+
+`scripts/submit_variant_effects.sh` and `scripts/run_variant_effects.sh` run the zero-shot variant-effects evaluation.
+
+`scripts/rerun_missing_submit.sh` together with `scripts/rerun_missing_on_node.sh` rerun any failed step (embedding, training, or variant effects), distributing work across reserved nodes via `oarsh` round-robin. To replay failures, edit the `EXPERIMENTS` array in `rerun_missing_on_node.sh` and launch `rerun_missing_submit.sh`.
+
+### Run order
+
+Pretrain a curriculum model with the matching `run_fine_tune_*.sh` script. Output lands in `fine_tuned_models/<model>/curriculum_stage_<rank>/merged_model`.
+
+Run `run_embeddings_metagenomic_lora.sh` to write embeddings to `data/<task>/<model>/<split>_<chunk>.tar.gz`.
+
+Run `run_train_metagenomic_lora.sh` to train supervised heads on those embeddings.
+
+Variant-effects evaluation is zero-shot: `scripts/predict_variant_effects.py` extracts WT and ALT embeddings around each variant locus and writes per-variant cosine distances to a CSV.
+
+### Environment
+
+`Dockerfile`, `pyproject.toml`, and `poetry.lock` pin the environment. Every training and evaluation command runs inside the container, so no host Python is needed.
 
 ## Documentation
 [Documentation for the BEND code repository](https://bend.readthedocs.io/en/latest/?badge=latest)

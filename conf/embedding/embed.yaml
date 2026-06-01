@@ -13,6 +13,8 @@ hydra :
              gena-lm-bert-large-t2,
              hyenadna-tiny-1k,
              hyenadna-large-1m,
+             hyenadna-curriculum-clm,
+             hyenadna-no-overlap,
              dnabert6,
              resnetlm,
              nt_transformer_ms,
@@ -22,7 +24,13 @@ hydra :
              onehot, 
              awdlstm,
              nt_transformer_v2_500m,
-             grover
+             grover,
+             dnabert2-metagenomic-lora,
+             dnabert2-curriculum-lora,
+             dnabert2-curriculum-lora-reversed,
+             dnabert2-samples-per-rank,
+             dnabert2-curriculum-512,
+             dnabert2-no-overlap-curriculum
              #hyenadna-small-32k,
              #hyenadna-medium-160k,
              #hyenadna-medium-450k,
@@ -59,6 +67,12 @@ gena-lm-bert-large-t2:
   _target_ : bend.utils.embedders.GENALMEmbedder
   model_name : AIRI-Institute/gena-lm-bert-large-t2t 
   upsample_embeddings : true
+hyenadna-curriculum-clm:
+  _target_: bend.utils.embedders.HyenaDNACurriculumCLMEmbedder
+  model_path: ./fine_tuned_models/hyenadna_curriculum_clm
+hyenadna-no-overlap:
+  _target_: bend.utils.embedders.HyenaDNANoOverlapEmbedder
+  model_path: ./fine_tuned_models/hyenadna_no_overlap
 hyenadna-large-1m:
   _target_ : bend.utils.embedders.HyenaDNAEmbedder
   model_path : ${embedders_dir}/hyenadna/hyenadna-large-1m-seqlen
@@ -101,6 +115,50 @@ nt_transformer_v2_500m:
 grover:
   _target_ : bend.utils.embedders.GROVEREmbedder
   model_name: ${embedders_dir}/grover/
+  upsample_embeddings: true
+dnabert2-metagenomic-lora:
+  _target_: bend.utils.embedders.DNABert2Embedder
+  model_name: ./fine_tuned_models/dnabert2_metagenomic_lora/merged_model
+  upsample_embeddings: true
+dnabert2-curriculum-lora:
+  _target_: bend.utils.embedders.DNABert2CurriculumLoraEmbedder
+  model_name: ./fine_tuned_models/dnabert2_curriculum_lora/merged_model
+  upsample_embeddings: true
+dnabert2-curriculum-lora-reversed:
+  _target_: bend.utils.embedders.DNABert2CurriculumLoraReversedEmbedder
+  model_name: ./fine_tuned_models/dnabert2_curriculum_lora_reversed/merged_model
+  upsample_embeddings: true
+dnabert2-samples-per-rank:
+  _target_: bend.utils.embedders.DNABert2SamplesPerRankEmbedder
+  model_name: ./fine_tuned_models/dnabert2_samples_per_rank/merged_model
+  upsample_embeddings: true
+dnabert2-curriculum-512:
+  _target_: bend.utils.embedders.DNABert2Curriculum512Embedder
+  model_name: ./fine_tuned_models/dnabert_2_curriculum_patience_5_batch_size_60_max_length_512/merged_model
+  upsample_embeddings: true
+dnabert2-curriculum-512-phylum:
+  _target_: bend.utils.embedders.DNABert2Curriculum512Embedder
+  model_name: ./dnabert_2_curriculum_patience_5_batch_size_60_max_length_512/curriculum_stage_phylum/merged_model
+  upsample_embeddings: true
+dnabert2-curriculum-512-class:
+  _target_: bend.utils.embedders.DNABert2Curriculum512Embedder
+  model_name: ./dnabert_2_curriculum_patience_5_batch_size_60_max_length_512/curriculum_stage_class/merged_model
+  upsample_embeddings: true
+dnabert2-curriculum-512-order:
+  _target_: bend.utils.embedders.DNABert2Curriculum512Embedder
+  model_name: ./dnabert_2_curriculum_patience_5_batch_size_60_max_length_512/curriculum_stage_order/merged_model
+  upsample_embeddings: true
+dnabert2-curriculum-512-family:
+  _target_: bend.utils.embedders.DNABert2Curriculum512Embedder
+  model_name: ./dnabert_2_curriculum_patience_5_batch_size_60_max_length_512/curriculum_stage_family/merged_model
+  upsample_embeddings: true
+dnabert2-curriculum-512-genus:
+  _target_: bend.utils.embedders.DNABert2Curriculum512Embedder
+  model_name: ./dnabert_2_curriculum_patience_5_batch_size_60_max_length_512/curriculum_stage_genus/merged_model
+  upsample_embeddings: true
+dnabert2-no-overlap-curriculum:
+  _target_: bend.utils.embedders.DNABert2Embedder
+  model_name: ./fine_tuned_models/dnabert2-no-overlap-curriculum/merged_model
   upsample_embeddings: true
 # data configurations for each task
 gene_finding:

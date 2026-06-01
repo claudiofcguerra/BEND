@@ -26,7 +26,8 @@ hydra :
                  awdlstm,
                  resnet-supervised,
                  nt_transformer_v2_500m,
-                 grover
+                 grover,
+                 dnabert2-metagenomic-lora
 task : gene_finding 
 embedder : onehot
 output_dir: ./downstream_tasks/${task}/${embedder}/
@@ -43,7 +44,7 @@ optimizer :
 data:
   _target_: bend.utils.data_downstream.get_data
   cross_validation : false
-  batch_size : 64
+  batch_size : 32
   num_workers : 0
   padding_value : -100
   shuffle : 1000
@@ -51,7 +52,7 @@ data:
   data_dir : ${data.parent_dir}/${task}/${embedder}/
 params:
   epochs: 100
-  load_checkpoint: false
+  load_checkpoint: true
   mode: train
   gradient_accumulation_steps: 1
   criterion: cross_entropy

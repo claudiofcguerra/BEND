@@ -100,7 +100,7 @@ def return_dataloader(data : Union[str, list],
     # '''Load data to dataloader from a list of paths or a single path'''
     if isinstance(data, str):
         data = [data]
-    dataset = wds.WebDataset(data)
+    dataset = wds.WebDataset(data, empty_check=False)
     if shuffle is not None:
         dataset = dataset.shuffle(shuffle)
     dataset = dataset.decode() # iterator over samples - each sample is dict with keys "input.npy" and "output.npy"

@@ -16,7 +16,7 @@ def main():
     parser.add_argument('bed_file', type=str, help='Path to the bed file')
     parser.add_argument('out_file', type=str, help='Path to the output file')
     # model can be any of the ones supported by bend.utils.embedders
-    parser.add_argument('model', choices=['nt', 'dnabert', 'awdlstm', 'gpn', 'convnet', 'genalm', 'hyenadna', 'dnabert2','grover'], type=str, help='Model architecture for computing embeddings')
+    parser.add_argument('model', choices=['nt', 'dnabert', 'awdlstm', 'gpn', 'convnet', 'genalm', 'hyenadna', 'hyenadna-curriculum-clm', 'hyenadna-no-overlap', 'dnabert2','grover'], type=str, help='Model architecture for computing embeddings')
     parser.add_argument('checkpoint', type=str, help='Path to or name of the model checkpoint')
     parser.add_argument('genome', type=str, help='Path to the reference genome fasta file')
     parser.add_argument('--extra_context', type=int, default=256, help='Number of extra nucleotides to include on each side of the sequence')
@@ -50,6 +50,14 @@ def main():
     elif args.model == 'hyenadna':
         embedder = embedders.HyenaDNAEmbedder(args.checkpoint)
         # autogressive model. No use for right context.
+        extra_context_left = args.extra_context
+        extra_context_right = 0
+    elif args.model == 'hyenadna-curriculum-clm':
+        embedder = embedders.HyenaDNACurriculumCLMEmbedder(args.checkpoint)
+        extra_context_left = args.extra_context
+        extra_context_right = 0
+    elif args.model == 'hyenadna-no-overlap':
+        embedder = embedders.HyenaDNANoOverlapEmbedder(args.checkpoint)
         extra_context_left = args.extra_context
         extra_context_right = 0
     elif args.model == 'dnabert2':

@@ -15,6 +15,46 @@ import numpy as np
 import glob
 import pandas as pd
 
+import time
+
+def _create_new_run_dir(base_dir):
+    run_id = int(time.time())
+    new_dir = os.path.join(base_dir, f"run_{run_id}")
+    os.makedirs(new_dir, exist_ok=True)
+    return new_dir
+
+def _select_or_create_run_dir(base_dir, load_checkpoint):
+    """
+    Multi-run support: Selects the latest run directory with checkpoints if resuming,
+    or the latest incomplete run, or creates a new run directory for a fresh run.
+    """
+    run_dirs = [d for d in glob.glob(f"{base_dir}/run_*") if os.path.isdir(d)]
+
+    if not (load_checkpoint and run_dirs):
+        return _create_new_run_dir(base_dir)
+
+    runs_with_checkpoints = []
+    for run_dir in run_dirs:
+        checkpoints_dir = os.path.join(run_dir, "checkpoints")
+        if os.path.exists(checkpoints_dir) and [f for f in os.listdir(checkpoints_dir) if f.endswith(".pt")]:
+            runs_with_checkpoints.append(run_dir)
+
+    if runs_with_checkpoints:
+        return sorted(runs_with_checkpoints, reverse=True)[0]
+
+    for run_dir in sorted(run_dirs, reverse=True):
+        metrics_file = os.path.join(run_dir, "best_model_metrics.csv")
+        if not os.path.exists(metrics_file):
+            return run_dir
+        try:
+            df = pd.read_csv(metrics_file)
+            if len(df) == 0 or "test_loss" not in df.columns:
+                return run_dir
+        except Exception:
+            return run_dir
+
+    return _create_new_run_dir(base_dir)
+    
 class CrossEntropyLoss(nn.Module):
     """
     Cross entropy loss for classification tasks. Wrapper around `torch.nn.CrossEntropyLoss`
@@ -211,26 +251,30 @@ class BaseTrainer:
         self.device = device
         self.config = config
         self.overwrite_dir = overwrite_dir
-        self._create_output_dir(self.config.output_dir) # create the output dir for the model 
+        self.config.output_dir = _select_or_create_run_dir(self.config.output_dir, self.config.params.load_checkpoint)
+        self._create_output_dir(self.config.output_dir) # create the output dir for the model
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.scaler = torch.cuda.amp.GradScaler() # init scaler for mixed precision training
         
     
     def _create_output_dir(self, path):
         os.makedirs(f'{path}/checkpoints/', exist_ok=True)
-        # if load checkpoints is false and overwrite dir is true, delete previous checkpoints
+        # Only delete previous results if we're explicitly NOT loading checkpoints AND overwriting
         if self.overwrite_dir and not self.config.params.load_checkpoint:
             print('Deleting all previous checkpoints')
-            print(self.overwrite_dir)
-            print(self.config.params.load_checkpoint)
+            print(f'overwrite_dir: {self.overwrite_dir}')
+            print(f'load_checkpoint: {self.config.params.load_checkpoint}')
             # delete all checkpoints from previous runs
             [os.remove(f) for f in glob.glob(f'{path}/**', recursive=True) if os.path.isfile(f)]
-            pd.DataFrame(columns = ['Epoch', 'train_loss', 'val_loss', f'val_{self.config.params.metric}']).to_csv(f'{path}/losses.csv', index = False)
-            
-        return 
+        else:
+            print(f'Preserving existing results (load_checkpoint={self.config.params.load_checkpoint})')
+        losses_path = f'{path}/losses.csv'
+        if not os.path.exists(losses_path):
+            pd.DataFrame(columns=['Epoch', 'train_loss', 'val_loss', f'val_{self.config.params.metric}']).to_csv(losses_path, index=False)
+        return
     
     def _load_checkpoint(self, checkpoint):
-        checkpoint = torch.load(checkpoint,  map_location=self.device)
+        checkpoint = torch.load(checkpoint, map_location=self.device, weights_only=False)
         try:
             self.model.load_state_dict(checkpoint['model_state_dict'], strict=True)
         except:
@@ -254,11 +298,12 @@ class BaseTrainer:
         return
     
     def _log_loss(self, epoch, train_loss, val_loss, val_metric):
-        df = pd.read_csv(f'{self.config.output_dir}/losses.csv')
-        df = pd.concat([df, pd.DataFrame([[epoch, train_loss, val_loss, val_metric]], 
-                                         columns = ['Epoch', 'train_loss', 'val_loss', f'val_{self.config.params.metric}'])
+        losses_path = f'{self.config.output_dir}/losses.csv'
+        df = pd.read_csv(losses_path)
+        df = pd.concat([df, pd.DataFrame([[epoch, train_loss, val_loss, val_metric]],
+                                         columns=['Epoch', 'train_loss', 'val_loss', f'val_{self.config.params.metric}'])
                                          ], ignore_index=True)
-        df.to_csv(f'{self.config.output_dir}/losses.csv', index = False)
+        df.to_csv(losses_path, index=False)
         return
     
     def _log_wandb(self, epoch, train_loss, val_loss, val_metric):
@@ -329,23 +374,44 @@ class BaseTrainer:
             return
         if isinstance(load_checkpoint, str):
             return load_checkpoint
-        checkpoints = [f for f in os.listdir(f'{self.config.output_dir}/checkpoints/') if f.endswith('.pt')]
-        checkpoints = sorted(checkpoints, key=lambda x: int(x.split('_')[1].split('.')[0]))
+            
+        checkpoints_dir = os.path.join(self.config.output_dir, 'checkpoints')
+        if not os.path.exists(checkpoints_dir):
+            split_dir = os.path.join(self.config.output_dir, 'split_0', 'checkpoints')
+            if os.path.exists(split_dir):
+                print(f'Found checkpoints in split_0 directory: {split_dir}')
+                checkpoints_dir = split_dir
+            else:
+                base_dir = os.path.dirname(self.config.output_dir)
+                run_dirs = [d for d in glob.glob(f"{base_dir}/run_*") if os.path.isdir(d)]
+                for run_dir in sorted(run_dirs, reverse=True):
+                    run_checkpoints_dir = os.path.join(run_dir, 'checkpoints')
+                    if os.path.exists(run_checkpoints_dir):
+                        checkpoints = [f for f in os.listdir(run_checkpoints_dir) if f.endswith('.pt')]
+                        if checkpoints:
+                            print(f'Found checkpoints in previous run directory: {run_checkpoints_dir}')
+                            checkpoints_dir = run_checkpoints_dir
+                            break
+                else:
+                    print('No checkpoints found, starting from scratch.')
+                    return
+                
+        checkpoints = [f for f in os.listdir(checkpoints_dir) if f.endswith('.pt')]
+        checkpoints = sorted(checkpoints, key=lambda x: int(x.split('_')[1].split('.')[0]), reverse=True)
         if len(checkpoints) == 0:
             print('No checkpoints found, starting from scratch.')
             return 
-        else:
-            if isinstance(load_checkpoint, bool):
-                    print('Load latest checkpoint')
-                    load_checkpoint = checkpoints[-1]
-            elif isinstance(load_checkpoint, int):
-                load_checkpoint = f'epoch_{load_checkpoint}.pt'
         
-        checkpoint_path = f'{self.config.output_dir}/checkpoints/{load_checkpoint}'
-        # check if checkpoint exists
-        if not os.path.exists(checkpoint_path):
-            raise ValueError(f'Checkpoint {checkpoint_path} does not exist')
-        return checkpoint_path
+        for checkpoint in checkpoints:
+            checkpoint_path = os.path.join(checkpoints_dir, checkpoint)
+            if os.path.exists(checkpoint_path) and os.path.getsize(checkpoint_path) > 0:
+                print(f'Found valid checkpoint: {checkpoint_path}')
+                return checkpoint_path
+            else:
+                print(f'Skipping invalid or empty checkpoint: {checkpoint_path}')
+        
+        print('No valid checkpoints found, starting from scratch.')
+        return
         
 
     def train_epoch(self, train_loader): # one epoch
@@ -533,13 +599,20 @@ class BaseTrainer:
         """
         print('TESTING')
         if checkpoint is None:
-            df = pd.read_csv(f'{self.config.output_dir}/losses.csv')
-            checkpoint = pd.DataFrame(df.iloc[df[f"val_{self.config.params.metric}"].idxmax()]).T.reset_index(drop=True) 
-        #print('before load checkpoint', )
-        #print(self.model.state_dict()['conv2.1.bias'])
-        # load checkpoint
-        print(f'{self.config.output_dir}/checkpoints/epoch_{int(checkpoint["Epoch"].iloc[0])}.pt')
-        epoch, train_loss, val_loss, val_metric = self._load_checkpoint(f'{self.config.output_dir}/checkpoints/epoch_{int(checkpoint["Epoch"].iloc[0])}.pt')
+            losses_file = f'{self.config.output_dir}/losses.csv'
+            if not os.path.exists(losses_file) and os.path.exists(f'{self.config.output_dir}/split_0/losses.csv'):
+                losses_file = f'{self.config.output_dir}/split_0/losses.csv'
+
+            df = pd.read_csv(losses_file)
+            checkpoint = pd.DataFrame(df.iloc[df[f"val_{self.config.params.metric}"].idxmax()]).T.reset_index(drop=True)
+
+        checkpoints_dir = f'{self.config.output_dir}/checkpoints/'
+        if not os.path.exists(checkpoints_dir) and os.path.exists(f'{self.config.output_dir}/split_0/checkpoints/'):
+            checkpoints_dir = f'{self.config.output_dir}/split_0/checkpoints/'
+            
+        checkpoint_path = f'{checkpoints_dir}/epoch_{int(checkpoint["Epoch"].iloc[0])}.pt'
+        print(checkpoint_path)
+        epoch, train_loss, val_loss, val_metric = self._load_checkpoint(checkpoint_path)
         print(f'Loaded checkpoint from epoch {epoch}, train loss: {train_loss:.3f}, val loss: {val_loss:.3f}, Val {self.config.params.metric}: {np.mean(val_metric):.3f}')
         #print('before test', )
         #print(self.model.state_dict()['conv2.1.bias'])

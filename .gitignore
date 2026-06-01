@@ -164,3 +164,13 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# Random folders
+.idea/
+**/curriculum_datasets/
+**/results/**
+**/fine_tuned_models/**
+**logs/
+/old_logs_27_october
+/old_logs_29_october
+/venn_diagrams

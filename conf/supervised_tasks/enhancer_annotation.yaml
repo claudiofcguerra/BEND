@@ -43,7 +43,7 @@ optimizer :
   weight_decay: 0.01
 data:
   _target_: bend.utils.data_downstream.get_data
-  batch_size : 8
+  batch_size : 4
   num_workers : 2
   padding_value : -100
   shuffle : 100
@@ -52,7 +52,7 @@ data:
   cross_validation : 0 # which split to run in the cross validation
 params:
   epochs: 100
-  load_checkpoint: false
+  load_checkpoint: true
   mode: train
   gradient_accumulation_steps: 1
   criterion: bce

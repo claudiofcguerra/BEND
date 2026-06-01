@@ -25,14 +25,15 @@ def run_experiment(cfg: DictConfig) -> None:
     cfg : DictConfig
         Hydra configuration object.
     """
-    wandb.config = OmegaConf.to_container(
-        cfg, resolve=True, throw_on_missing=True
-        )
     # mkdir output_dir 
     os.makedirs(f'{cfg.output_dir}/checkpoints/', exist_ok=True)
     print('output_dir', cfg.output_dir)
     # init wandb
-    run = wandb.init(**cfg.wandb, dir = cfg.output_dir, config = cfg)
+    run = wandb.init(
+        **cfg.wandb,
+        dir=cfg.output_dir,
+        config=OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True),
+    )
     
     OmegaConf.save(cfg, f"{cfg.output_dir}/config.yaml") # save the config to the experiment dir
     # set device 
@@ -75,8 +76,10 @@ def run_experiment(cfg: DictConfig) -> None:
     if 'supervised' in cfg.embedder : cfg.data.data_dir = cfg.data.data_dir.replace(cfg.embedder, 'onehot')
     train_loader, val_loader, test_loader = hydra.utils.instantiate(cfg.data) # instantiate dataloaders
     # instantiate trainer
-    trainer = BaseTrainer(model = model, optimizer = optimizer, criterion = criterion, 
-                        device = device, config = cfg, overwrite_dir = True)
+    import sys
+    ignore_completed = "--ignore_completed" in sys.argv
+    trainer = BaseTrainer(model = model, optimizer = optimizer, criterion = criterion,
+                        device = device, config = cfg, overwrite_dir = ignore_completed)
     
 
     if cfg.params.mode == 'train':
